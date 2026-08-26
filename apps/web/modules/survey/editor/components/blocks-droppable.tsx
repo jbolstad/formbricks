@@ -2,7 +2,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { Workspace } from "@formbricks/database/prisma-browser";
 import { TI18nString } from "@formbricks/types/i18n";
-import { TSurveyBlockLogic } from "@formbricks/types/surveys/blocks";
+import { TSurveyBlock, TSurveyBlockLogic } from "@formbricks/types/surveys/blocks";
 import { TSurveyElement } from "@formbricks/types/surveys/elements";
 import { TSurvey } from "@formbricks/types/surveys/types";
 import { TUserLocale } from "@formbricks/types/user";
@@ -21,6 +21,7 @@ interface BlocksDroppableProps {
     labelKey: "buttonLabel" | "backButtonLabel",
     labelValue: TI18nString | undefined
   ) => void;
+  updateBlockAttributes: (blockId: string, updatedAttributes: Partial<TSurveyBlock>) => void;
   deleteElement: (elementIdx: number) => void;
   duplicateElement: (elementIdx: number) => void;
   activeElementId: string | null;
@@ -55,6 +56,7 @@ export const BlocksDroppable = ({
   updateBlockLogic,
   updateBlockLogicFallback,
   updateBlockButtonLabel,
+  updateBlockAttributes,
   addElement,
   isFormbricksCloud,
   isCxMode,
@@ -92,6 +94,7 @@ export const BlocksDroppable = ({
               updateBlockLogic={updateBlockLogic}
               updateBlockLogicFallback={updateBlockLogicFallback}
               updateBlockButtonLabel={updateBlockButtonLabel}
+              updateBlockAttributes={updateBlockAttributes}
               duplicateElement={duplicateElement}
               deleteElement={deleteElement}
               activeElementId={activeElementId}

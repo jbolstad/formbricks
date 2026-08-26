@@ -2767,6 +2767,10 @@ components:
         isDraft:
           type: boolean
           description: Draft marker used by the editor and future update rules.
+        shuffleFixed:
+          type: boolean
+          description: |
+            When the parent block has shuffleElements enabled, keep this element at its editor index. Ignored when block shuffle is off.
     SurveyCharLimit:
       type: object
       description: Optional `openText` character limit configuration.
@@ -3625,6 +3629,15 @@ components:
           $ref: '#/components/schemas/TranslatableText'
         backButtonLabel:
           $ref: '#/components/schemas/TranslatableText'
+        shuffleElements:
+          type: boolean
+          description: |
+            When true, unlocked elements in this block are shown in random order to each respondent.
+        shufflePoolId:
+          type: string
+          minLength: 1
+          description: |
+            Optional shuffle pool id. Blocks with the same id permute among their slot indices only.
       additionalProperties: false
     SurveyEndScreenEnding:
       type: object
@@ -4267,6 +4280,15 @@ components:
           $ref: '#/components/schemas/TranslatableText'
         backButtonLabel:
           $ref: '#/components/schemas/TranslatableText'
+        shuffleElements:
+          type: boolean
+          description: |
+            When true, unlocked elements in this block are shown in random order to each respondent. Editor order is unchanged and responses are keyed by element id.
+        shufflePoolId:
+          type: string
+          minLength: 1
+          description: |
+            Optional shuffle pool id. Blocks with the same id permute among their slot indices only. Omit for a fixed position.
       additionalProperties: false
     SurveyNumberVariable:
       type: object

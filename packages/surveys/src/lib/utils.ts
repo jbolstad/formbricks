@@ -116,6 +116,68 @@ export const getShuffledChoicesIds = (
   return shuffledChoices.map((choice) => choice.id);
 };
 
+type TShuffleFixedItem = { shuffleFixed?: boolean };
+type TShufflePoolBlock = { shufflePoolId?: string };
+
+export const getShuffledElementsWithFixedPositions = <T extends TShuffleFixedItem>(elements: T[]): T[] => {
+  const unlockedIndices: number[] = [];
+  const unlockedElements: T[] = [];
+
+  elements.forEach((element, index) => {
+    if (!element.shuffleFixed) {
+      unlockedIndices.push(index);
+      unlockedElements.push(element);
+    }
+  });
+
+  if (unlockedElements.length < 2) {
+    return elements;
+  }
+
+  const shuffledUnlocked = [...unlockedElements];
+  shuffle(shuffledUnlocked);
+
+  const result = [...elements];
+  unlockedIndices.forEach((index, i) => {
+    result[index] = shuffledUnlocked[i];
+  });
+
+  return result;
+};
+
+export const getBlocksWithShuffledPools = <T extends TShufflePoolBlock>(blocks: T[]): T[] => {
+  const poolIndices = new Map<string, number[]>();
+
+  blocks.forEach((block, index) => {
+    const poolId = block.shufflePoolId?.trim();
+    if (!poolId) {
+      return;
+    }
+
+    const indices = poolIndices.get(poolId) ?? [];
+    indices.push(index);
+    poolIndices.set(poolId, indices);
+  });
+
+  const result = [...blocks];
+
+  for (const indices of poolIndices.values()) {
+    if (indices.length < 2) {
+      continue;
+    }
+
+    const poolBlocks = indices.map((index) => blocks[index]);
+    const shuffledPoolBlocks = [...poolBlocks];
+    shuffle(shuffledPoolBlocks);
+
+    indices.forEach((blockIndex, i) => {
+      result[blockIndex] = shuffledPoolBlocks[i];
+    });
+  }
+
+  return result;
+};
+
 export const calculateElementIdx = (
   survey: TJsWorkspaceStateSurvey,
   currentQustionIdx: number,

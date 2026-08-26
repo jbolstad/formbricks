@@ -5,7 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDownIcon, ChevronRightIcon, GripIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Workspace } from "@formbricks/database/prisma-browser";
 import { TI18nString } from "@formbricks/types/i18n";
@@ -38,9 +38,14 @@ import { OpenElementForm } from "@/modules/survey/editor/components/open-element
 import { PictureSelectionForm } from "@/modules/survey/editor/components/picture-selection-form";
 import { RankingElementForm } from "@/modules/survey/editor/components/ranking-element-form";
 import { RatingElementForm } from "@/modules/survey/editor/components/rating-element-form";
+import { formatShufflePoolLabel } from "@/modules/survey/editor/lib/shuffle-pools";
+import { blockHasShuffleAndJumpConflict } from "@/modules/survey/editor/lib/shuffle-warning";
 import { formatTextWithSlashes } from "@/modules/survey/editor/lib/utils";
 import { getElementIconMap, getTSurveyElementTypeEnumName } from "@/modules/survey/lib/elements";
-import { Alert, AlertButton, AlertTitle } from "@/modules/ui/components/alert";
+import { Alert, AlertButton, AlertDescription, AlertTitle } from "@/modules/ui/components/alert";
+import { Badge } from "@/modules/ui/components/badge";
+import { Label } from "@/modules/ui/components/label";
+import { Switch } from "@/modules/ui/components/switch";
 
 interface BlockCardProps {
   localSurvey: TSurvey;
@@ -56,6 +61,7 @@ interface BlockCardProps {
     labelKey: "buttonLabel" | "backButtonLabel",
     labelValue: TI18nString | undefined
   ) => void;
+  updateBlockAttributes: (blockId: string, updatedAttributes: Partial<TSurveyBlock>) => void;
   deleteElement: (elementIdx: number) => void;
   duplicateElement: (elementIdx: number) => void;
   activeElementId: string | null;
@@ -90,6 +96,7 @@ export const BlockCard = ({
   updateBlockLogic,
   updateBlockLogicFallback,
   updateBlockButtonLabel,
+  updateBlockAttributes,
   duplicateElement,
   deleteElement,
   activeElementId,
@@ -123,6 +130,16 @@ export const BlockCard = ({
 
   const hasMultipleElements = block.elements.length > 1;
   const blockLogic = block.logic ?? [];
+  const pooledBlockIds = useMemo(
+    () =>
+      new Set(
+        localSurvey.blocks
+          .filter((surveyBlock) => surveyBlock.shufflePoolId?.trim())
+          .map((surveyBlock) => surveyBlock.id)
+      ),
+    [localSurvey.blocks]
+  );
+  const showShuffleJumpWarning = blockHasShuffleAndJumpConflict(block, pooledBlockIds);
 
   // Check if any element in this block is currently active
   const isBlockOpen = block.elements.some((element) => element.id === activeElementId);
@@ -283,7 +300,18 @@ export const BlockCard = ({
               <div className="flex h-full items-center justify-between px-4 py-2">
                 <div className="flex items-center gap-2">
                   <div>
-                    <h4 className="text-sm font-medium text-slate-700">{block.name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-medium text-slate-700">{block.name}</h4>
+                      {block.shufflePoolId?.trim() ? (
+                        <Badge
+                          text={t("workspace.surveys.edit.card_shuffle_pool_badge", {
+                            pool: formatShufflePoolLabel(block.shufflePoolId),
+                          })}
+                          type="info"
+                          size="tiny"
+                        />
+                      ) : null}
+                    </div>
                     <p className="text-xs text-slate-500">
                       {t("common.count_questions", { count: block.elements.length })}
                     </p>
@@ -404,6 +432,22 @@ export const BlockCard = ({
                           </Alert>
                         )}
                         {renderElementForm(element, elementIdx)}
+                        {block.shuffleElements && hasMultipleElements ? (
+                          <div className="mt-4 flex items-center gap-x-2">
+                            <Switch
+                              id={`shuffle-fixed-${element.id}`}
+                              checked={element.shuffleFixed ?? false}
+                              onCheckedChange={(checked) => {
+                                updateElement(elementIdx, {
+                                  shuffleFixed: checked ? true : undefined,
+                                });
+                              }}
+                            />
+                            <Label htmlFor={`shuffle-fixed-${element.id}`} className="cursor-pointer text-sm">
+                              {t("workspace.surveys.edit.keep_question_position_fixed")}
+                            </Label>
+                          </div>
+                        ) : null}
                         <div className="mt-4">
                           <Collapsible.Root
                             open={openAdvanced}
@@ -462,6 +506,17 @@ export const BlockCard = ({
 
             <hr className="border-dashed border-slate-200" />
 
+            {showShuffleJumpWarning ? (
+              <div className="px-4 pt-4">
+                <Alert variant="warning" size="small" role="status">
+                  <AlertTitle>{t("workspace.surveys.edit.shuffle_jump_warning_title")}</AlertTitle>
+                  <AlertDescription>
+                    {t("workspace.surveys.edit.shuffle_jump_warning_description")}
+                  </AlertDescription>
+                </Alert>
+              </div>
+            ) : null}
+
             {/* Conditional Logic */}
             {block.elements[0] && (
               <div className="p-4 pb-0">
@@ -484,6 +539,7 @@ export const BlockCard = ({
                 blockIndex={blockIdx}
                 selectedLanguageCode={selectedLanguageCode}
                 updateBlockButtonLabel={updateBlockButtonLabel}
+                updateBlockAttributes={updateBlockAttributes}
                 locale={locale}
                 isStorageConfigured={isStorageConfigured}
                 isLastBlock={blockIdx === totalBlocks - 1}

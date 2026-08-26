@@ -1,0 +1,34 @@
+---
+title: "Order randomization"
+description: "Randomize question order within blocks and card order across shuffle pools without changing editor or response order."
+icon: "shuffle"
+---
+
+Randomize what respondents see while keeping editor order and response data stable.
+
+## Within a block
+
+Enable **Randomize question order** in a block’s settings when the block has multiple questions on one card. Each respondent sees those questions in a random order; the order in the editor and in stored responses stays the same (answers are keyed by question id).
+
+Use **Keep position fixed when randomizing** on individual questions to pin them to their editor slot while other questions on the same card shuffle into the remaining slots.
+
+## Card shuffle pools
+
+Assign blocks to a **Card shuffle pool** in block settings. Blocks that share the same pool id are shown in random order **only among their pool’s positions**. Blocks with **No shuffle** stay fixed.
+
+You can use **multiple independent pools** in one survey (for example, pool A for blocks 2–4 and pool B for blocks 7–8).
+
+## Jump logic
+
+Conditional **jump to block** rules still win over shuffled sequential order — jumps target block ids, not positions. If you combine shuffle pools with jump logic, a warning appears in the editor. Prefer using one or the other unless you intend jumps to override the shuffled path.
+
+## API
+
+Block fields:
+
+- `shuffleElements` — randomize unlocked elements in the block for respondents.
+- `shufflePoolId` — pool id shared by blocks that shuffle together.
+
+Element field:
+
+- `shuffleFixed` — keep this element at its editor index when `shuffleElements` is enabled on the parent block.

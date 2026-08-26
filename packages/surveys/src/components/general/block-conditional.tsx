@@ -131,6 +131,11 @@ export function BlockConditional({
   const autoProgressingInFlightRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Element display order is fixed for the survey session in survey.tsx.
+  // Re-shuffling here would re-run whenever the parent passes a new elements array
+  // (e.g. after recall parsing / response updates).
+  const displayElements = block.elements;
+
   // Screen-reader/keyboard users continue right where they act: when the card
   // appears after user navigation (or on an autofocus-allowed initial render),
   // focus its first control instead of dropping focus to the body, which made
@@ -437,7 +442,7 @@ export function BlockConditional({
       <ScrollableContainer fullSizeCards={fullSizeCards} disableInternalScroll={isCardless}>
         <div className="space-y-6">
           <div className="space-y-6">
-            {block.elements.map((element, index) => {
+            {displayElements.map((element, index) => {
               const isFirstElement = index === 0;
 
               return (

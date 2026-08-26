@@ -114,6 +114,7 @@
                   "surveys/general-features/add-image-or-video-question",
                   "surveys/general-features/conditional-logic",
                   "surveys/general-features/overwrite-styling",
+                  "surveys/general-features/order-randomization",
                   "surveys/general-features/hidden-fields",
                   "surveys/general-features/limit-submissions",
                   "surveys/general-features/multi-language-surveys",

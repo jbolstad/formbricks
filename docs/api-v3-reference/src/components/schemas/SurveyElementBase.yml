@@ -42,3 +42,8 @@ properties:
   isDraft:
     type: boolean
     description: Draft marker used by the editor and future update rules.
+  shuffleFixed:
+    type: boolean
+    description: >
+      When the parent block has shuffleElements enabled, keep this element at its editor index.
+      Ignored when block shuffle is off.

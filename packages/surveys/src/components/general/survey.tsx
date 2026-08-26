@@ -42,7 +42,14 @@ import { ResponseQueue } from "@/lib/response-queue";
 import { SURVEY_INSTRUCTIONS_ID, getSurveyPagePosition, hasSurveyInstructions } from "@/lib/survey-page";
 import { SurveyState } from "@/lib/survey-state";
 import { useOnlineStatus } from "@/lib/use-online-status";
-import { cn, findBlockByElementId, getDefaultLanguageCode, getElementsFromSurveyBlocks } from "@/lib/utils";
+import {
+  cn,
+  findBlockByElementId,
+  getBlocksWithShuffledPools,
+  getDefaultLanguageCode,
+  getElementsFromSurveyBlocks,
+  getShuffledElementsWithFixedPositions,
+} from "@/lib/utils";
 import { TResponseErrorCodesEnum } from "@/types/response-error-codes";
 
 const restoreSurveyStateFromSnapshot = (
@@ -230,6 +237,53 @@ export function Survey({
 
   const questions = useMemo(() => getElementsFromSurveyBlocks(localSurvey.blocks), [localSurvey.blocks]);
 
+  // Session-stable block pool shuffle (recompute only when pool membership / block ids change)
+  const sessionBlocksSignature = localSurvey.blocks
+    .map((block) => `${block.id}:${block.shufflePoolId?.trim() ?? ""}`)
+    .join("|");
+  const sessionBlocksCacheRef = useRef<{ signature: string; blocks: TSurveyBlock[] } | null>(null);
+  if (
+    sessionBlocksCacheRef.current === null ||
+    sessionBlocksCacheRef.current.signature !== sessionBlocksSignature
+  ) {
+    sessionBlocksCacheRef.current = {
+      signature: sessionBlocksSignature,
+      blocks: getBlocksWithShuffledPools(localSurvey.blocks),
+    };
+  }
+  const sessionBlocks = sessionBlocksCacheRef.current.blocks;
+
+  // Session-stable within-block element order (survives BlockConditional remounts)
+  const elementOrderByBlockRef = useRef<Map<string, { signature: string; order: string[] }>>(new Map());
+
+  const getSessionOrderedElements = (block: TSurveyBlock): TSurveyElement[] => {
+    if (!block.shuffleElements) {
+      return block.elements;
+    }
+
+    const signature = block.elements
+      .map((element) => `${element.id}:${element.shuffleFixed ? "1" : "0"}`)
+      .join(",");
+    const cached = elementOrderByBlockRef.current.get(block.id);
+
+    if (!cached || cached.signature !== signature) {
+      const order = getShuffledElementsWithFixedPositions(block.elements).map((element) => element.id);
+      elementOrderByBlockRef.current.set(block.id, { signature, order });
+    }
+
+    const order = elementOrderByBlockRef.current.get(block.id)?.order ?? block.elements.map((e) => e.id);
+    const byId = new Map(block.elements.map((element) => [element.id, element]));
+    return order.map((id) => byId.get(id)).filter((element): element is TSurveyElement => Boolean(element));
+  };
+
+  const sessionSurvey = useMemo(
+    () => ({
+      ...localSurvey,
+      blocks: sessionBlocks,
+    }),
+    [localSurvey, sessionBlocks]
+  );
+
   const originalQuestionRequiredStates = useMemo(() => {
     return questions.reduce<Record<string, boolean>>((acc, question) => {
       acc[question.id] = question.required;
@@ -311,8 +365,8 @@ export function Survey({
     localSurvey.type === "link" ? getLinkSurveyCardMaxWidth(styling.linkSurveyCardWidth) : undefined;
 
   // Current block tracking (replaces currentQuestionIndex)
-  const currentBlockIndex = localSurvey.blocks.findIndex((b) => b.id === blockId);
-  const currentBlock = localSurvey.blocks[currentBlockIndex];
+  const currentBlockIndex = sessionBlocks.findIndex((b) => b.id === blockId);
+  const currentBlock = sessionBlocks[currentBlockIndex];
 
   const contentRef = useRef<HTMLDivElement | null>(null);
   const showProgressBar = !styling.hideProgressBar;
@@ -855,7 +909,7 @@ export function Survey({
     handleRequiredQuestions(allRequiredQuestionIds);
 
     // Return the jump target (which is a block ID) or the next block in sequence
-    const nextBlockId = firstJumpTarget || localSurvey.blocks[currentBlockIndex + 1]?.id;
+    const nextBlockId = firstJumpTarget || sessionBlocks[currentBlockIndex + 1]?.id;
 
     return {
       nextBlockId,
@@ -1104,13 +1158,13 @@ export function Survey({
       setHistory(newHistory);
     } else {
       // otherwise go back to previous block in array
-      prevBlockId = localSurvey.blocks[currentBlockIndex - 1]?.id;
+      prevBlockId = sessionBlocks[currentBlockIndex - 1]?.id;
     }
     popVariableState();
     if (!prevBlockId) throw new Error("Block not found");
 
     // Revert required changes by the first element in the previous block
-    const prevBlock = localSurvey.blocks.find((b) => b.id === prevBlockId);
+    const prevBlock = sessionBlocks.find((b) => b.id === prevBlockId);
     if (prevBlock?.elements[0]) {
       revertRequiredChangesByQuestion(prevBlock.elements[0].id);
     }
@@ -1204,7 +1258,7 @@ export function Survey({
             isCardless={isCardless}
           />
         );
-      } else if (blockIdx >= localSurvey.blocks.length) {
+      } else if (blockIdx >= sessionBlocks.length) {
         const endingCard = localSurvey.endings.find((ending) => {
           return ending.id === blockId;
         });
@@ -1229,7 +1283,8 @@ export function Survey({
           );
         }
       } else {
-        const block = localSurvey.blocks[blockIdx];
+        const block = sessionBlocks[blockIdx];
+        const orderedElements = getSessionOrderedElements(block);
         return (
           Boolean(block) && (
             <BlockConditional
@@ -1238,7 +1293,7 @@ export function Survey({
               surveyId={localSurvey.id}
               block={{
                 ...block,
-                elements: block.elements.map((element) =>
+                elements: orderedElements.map((element) =>
                   parseRecallInformation(element, selectedLanguage, responseData, currentVariables)
                 ),
               }}
@@ -1249,10 +1304,10 @@ export function Survey({
               ttc={ttc}
               setTtc={setTtc}
               onFileUpload={onFileUpload}
-              isFirstBlock={block.id === localSurvey.blocks[0]?.id}
+              isFirstBlock={block.id === sessionBlocks[0]?.id}
               skipPrefilled={skipPrefilled && !isNavigatingBackRef.current}
               prefilledResponseData={offset === 0 ? prefillResponseData : undefined}
-              isLastBlock={block.id === localSurvey.blocks[localSurvey.blocks.length - 1].id}
+              isLastBlock={block.id === sessionBlocks[sessionBlocks.length - 1].id}
               languageCode={selectedLanguage}
               autoFocusEnabled={autoFocusEnabled}
               shouldFocusOnMount={autoFocusEnabled || hasUserNavigatedRef.current}
@@ -1288,7 +1343,7 @@ export function Survey({
             {(!isCardless && showProgressBar) || isLanguageSwitchVisible || isCloseButtonVisible ? (
               <div className="flex w-full flex-col items-end">
                 {!isCardless && showProgressBar ? (
-                  <ProgressBar survey={localSurvey} blockId={blockId} />
+                  <ProgressBar survey={sessionSurvey} blockId={blockId} />
                 ) : null}
 
                 {isCloseButtonVisible || isLanguageSwitchVisible ? (
@@ -1376,7 +1431,7 @@ export function Survey({
       cardArrangement={cardArrangement}
       currentBlockId={blockId}
       getCardContent={getCardContent}
-      survey={localSurvey}
+      survey={sessionSurvey}
       styling={styling}
       setBlockId={setBlockId}
       shouldResetBlockId={shouldResetQuestionId}
@@ -1388,7 +1443,7 @@ export function Survey({
   if (isCardless) {
     return (
       <CardlessSurveyLayout
-        survey={localSurvey}
+        survey={sessionSurvey}
         blockId={blockId}
         styling={styling}
         showProgressBar={showProgressBar}

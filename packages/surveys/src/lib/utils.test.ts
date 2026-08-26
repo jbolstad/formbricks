@@ -6,10 +6,12 @@ import type { TSurveyLanguage } from "../../../types/surveys/types";
 import {
   cn,
   findBlockByElementId,
+  getBlocksWithShuffledPools,
   getDefaultLanguageCode,
   getElementsFromSurveyBlocks,
   getMimeType,
   getShuffledChoicesIds,
+  getShuffledElementsWithFixedPositions,
   getShuffledRowIndices,
   getSurveyLanguageTag,
   isRTL,
@@ -618,6 +620,109 @@ describe("isRTLLanguage", () => {
       ],
     } as TJsWorkspaceStateSurvey;
     expect(isRTLLanguage(survey, "default")).toBe(true);
+  });
+});
+
+describe("getShuffledElementsWithFixedPositions", () => {
+  beforeEach(() => {
+    mockGetRandomValues.mockReset();
+  });
+
+  test("returns original order when fewer than two unlocked elements", () => {
+    const elements = [
+      { id: "a", shuffleFixed: true },
+      { id: "b", shuffleFixed: true },
+    ];
+
+    expect(getShuffledElementsWithFixedPositions(elements)).toEqual(elements);
+  });
+
+  test("keeps fixed elements at their editor indices", () => {
+    setNextRandomNormalizedValue(0.1);
+    const elements = [
+      { id: "fixed-start", shuffleFixed: true },
+      { id: "b" },
+      { id: "c" },
+      { id: "fixed-end", shuffleFixed: true },
+    ];
+
+    const result = getShuffledElementsWithFixedPositions(elements);
+
+    expect(result[0]?.id).toBe("fixed-start");
+    expect(result[3]?.id).toBe("fixed-end");
+    expect(result.map((element) => element.id)).toEqual(["fixed-start", "c", "b", "fixed-end"]);
+  });
+
+  test("shuffles all elements when none are fixed", () => {
+    setNextRandomNormalizedValue(0.1);
+    setNextRandomNormalizedValue(0.1);
+    const elements = [{ id: "a" }, { id: "b" }, { id: "c" }];
+
+    expect(getShuffledElementsWithFixedPositions(elements).map((element) => element.id)).toEqual([
+      "b",
+      "c",
+      "a",
+    ]);
+  });
+});
+
+describe("getBlocksWithShuffledPools", () => {
+  beforeEach(() => {
+    mockGetRandomValues.mockReset();
+  });
+
+  test("returns original order when no pool ids are set", () => {
+    const blocks = [{ id: "a" }, { id: "b" }, { id: "c" }];
+
+    expect(getBlocksWithShuffledPools(blocks)).toEqual(blocks);
+  });
+
+  test("shuffles blocks within a single pool without moving fixed blocks", () => {
+    setNextRandomNormalizedValue(0.1);
+    setNextRandomNormalizedValue(0.1);
+    const blocks = [
+      { id: "fixed", shufflePoolId: undefined },
+      { id: "b", shufflePoolId: "pool-a" },
+      { id: "c", shufflePoolId: "pool-a" },
+      { id: "d", shufflePoolId: "pool-a" },
+      { id: "fixed-end" },
+    ];
+
+    expect(getBlocksWithShuffledPools(blocks).map((block) => block.id)).toEqual([
+      "fixed",
+      "c",
+      "d",
+      "b",
+      "fixed-end",
+    ]);
+  });
+
+  test("shuffles independent pools separately", () => {
+    setNextRandomNormalizedValue(0.1);
+    setNextRandomNormalizedValue(0.1);
+    setNextRandomNormalizedValue(0.1);
+    setNextRandomNormalizedValue(0.1);
+    const blocks = [
+      { id: "a1", shufflePoolId: "pool-a" },
+      { id: "a2", shufflePoolId: "pool-a" },
+      { id: "fixed" },
+      { id: "b1", shufflePoolId: "pool-b" },
+      { id: "b2", shufflePoolId: "pool-b" },
+    ];
+
+    expect(getBlocksWithShuffledPools(blocks).map((block) => block.id)).toEqual([
+      "a2",
+      "a1",
+      "fixed",
+      "b2",
+      "b1",
+    ]);
+  });
+
+  test("leaves single-member pools unchanged", () => {
+    const blocks = [{ id: "a", shufflePoolId: "pool-a" }, { id: "b" }];
+
+    expect(getBlocksWithShuffledPools(blocks)).toEqual(blocks);
   });
 });
 

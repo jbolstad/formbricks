@@ -43,8 +43,11 @@ import {
   moveBlock as moveBlockHelper,
   moveElementInBlock,
   renumberBlocks,
+  updateBlock,
   updateElementInBlock,
 } from "@/modules/survey/editor/lib/blocks";
+import { formatShufflePoolLabel, getShufflePoolSummary } from "@/modules/survey/editor/lib/shuffle-pools";
+import { surveyHasShuffleAndJumpConflict } from "@/modules/survey/editor/lib/shuffle-warning";
 import {
   findBlockUsedInLogic,
   findElementUsedInLogic,
@@ -53,6 +56,7 @@ import {
   scrollElementCardIntoView,
 } from "@/modules/survey/editor/lib/utils";
 import { getElementsFromBlocks } from "@/modules/survey/lib/client-utils";
+import { Alert, AlertDescription, AlertTitle } from "@/modules/ui/components/alert";
 import { ConfirmationModal } from "@/modules/ui/components/confirmation-modal";
 import {
   isBlockLogicItemValid,
@@ -361,6 +365,19 @@ export const ElementsView = ({
       return { ...prevSurvey, blocks };
     });
   };
+
+  const updateBlockAttributes = (blockId: string, updatedAttributes: Partial<TSurveyBlock>) => {
+    setLocalSurvey((prevSurvey) => {
+      const result = updateBlock(prevSurvey, blockId, updatedAttributes);
+      return result.ok ? result.data : prevSurvey;
+    });
+  };
+
+  const shufflePoolSummary = useMemo(() => getShufflePoolSummary(localSurvey.blocks), [localSurvey.blocks]);
+  const showSurveyShuffleJumpWarning = useMemo(
+    () => surveyHasShuffleAndJumpConflict(localSurvey),
+    [localSurvey]
+  );
 
   const validateElementDeletion = (elementId: string, elementIdx: number): boolean => {
     const recallElementIdx = isUsedInRecall(localSurvey, elementId);
@@ -867,6 +884,29 @@ export const ElementsView = ({
         </div>
       )}
 
+      {shufflePoolSummary.length > 0 ? (
+        <p className="mb-4 text-sm text-slate-600">
+          {t("workspace.surveys.edit.card_shuffle_pool_summary", {
+            count: shufflePoolSummary.length,
+            details: shufflePoolSummary
+              .map((pool) =>
+                t("workspace.surveys.edit.card_shuffle_pool_summary_item", {
+                  pool: formatShufflePoolLabel(pool.poolId),
+                  blockCount: pool.count,
+                })
+              )
+              .join(", "),
+          })}
+        </p>
+      ) : null}
+
+      {showSurveyShuffleJumpWarning ? (
+        <Alert variant="warning" size="small" className="mb-4" role="status">
+          <AlertTitle>{t("workspace.surveys.edit.shuffle_jump_warning_title")}</AlertTitle>
+          <AlertDescription>{t("workspace.surveys.edit.shuffle_jump_warning_description")}</AlertDescription>
+        </Alert>
+      ) : null}
+
       <DndContext
         id="blocks"
         sensors={sensors}
@@ -881,6 +921,7 @@ export const ElementsView = ({
           updateBlockLogic={updateBlockLogic}
           updateBlockLogicFallback={updateBlockLogicFallback}
           updateBlockButtonLabel={updateBlockButtonLabel}
+          updateBlockAttributes={updateBlockAttributes}
           duplicateElement={duplicateElement}
           deleteElement={deleteElement}
           activeElementId={activeElementId}

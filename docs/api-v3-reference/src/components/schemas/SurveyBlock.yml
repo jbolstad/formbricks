@@ -40,4 +40,15 @@ properties:
     $ref: ./TranslatableText.yml
   backButtonLabel:
     $ref: ./TranslatableText.yml
+  shuffleElements:
+    type: boolean
+    description: >
+      When true, unlocked elements in this block are shown in random order to each respondent.
+      Editor order is unchanged and responses are keyed by element id.
+  shufflePoolId:
+    type: string
+    minLength: 1
+    description: >
+      Optional shuffle pool id. Blocks with the same id permute among their slot indices only.
+      Omit for a fixed position.
 additionalProperties: false

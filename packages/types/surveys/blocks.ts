@@ -134,6 +134,8 @@ export const ZSurveyBlock = z
     logicFallback: ZSurveyBlockId.optional(),
     buttonLabel: ZI18nString.optional(),
     backButtonLabel: ZI18nString.optional(),
+    shuffleElements: z.boolean().optional(),
+    shufflePoolId: z.string().min(1).optional(),
   })
   .superRefine((block, ctx) => {
     // Validate element IDs are unique within block
