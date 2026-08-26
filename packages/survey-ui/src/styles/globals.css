@@ -313,24 +313,24 @@
     outline-color: transparent;
   }
 
-  #fbjs a:focus-visible,
-  #fbjs button:focus-visible,
-  #fbjs input:focus-visible,
-  #fbjs select:focus-visible,
-  #fbjs textarea:focus-visible,
-  #fbjs summary:focus-visible,
+  #fbjs[data-fb-input-modality="keyboard"] a:focus-visible,
+  #fbjs[data-fb-input-modality="keyboard"] button:focus-visible,
+  #fbjs[data-fb-input-modality="keyboard"] input:focus-visible,
+  #fbjs[data-fb-input-modality="keyboard"] select:focus-visible,
+  #fbjs[data-fb-input-modality="keyboard"] textarea:focus-visible,
+  #fbjs[data-fb-input-modality="keyboard"] summary:focus-visible,
   /* tabindex="-1" targets are script-focus-only (e.g. the ending card container focused
      for screen-reader announcement) — not operable controls, so no indicator. :where()
      keeps the exclusion at zero specificity so later same-specificity overrides (the
      inset menu-item ring below) still win the cascade. */
-  #fbjs [tabindex]:where(:not([tabindex="-1"])):focus-visible,
+  #fbjs[data-fb-input-modality="keyboard"] [tabindex]:where(:not([tabindex="-1"])):focus-visible,
   /* A visually-hidden radio/checkbox drives a visible label: paint the ring on the label. */
-  #fbjs label:has(input[type="radio"]:focus-visible),
-  #fbjs label:has(input[type="checkbox"]:focus-visible),
-  #fbjs [data-fb-focus-ring]:has(:focus-visible),
+  #fbjs[data-fb-input-modality="keyboard"] label:has(input[type="radio"]:focus-visible),
+  #fbjs[data-fb-input-modality="keyboard"] label:has(input[type="checkbox"]:focus-visible),
+  #fbjs[data-fb-input-modality="keyboard"] [data-fb-focus-ring]:has(:focus-visible),
   /* Ring carrier as the hidden input's direct sibling (e.g. the matrix's round indicator),
      for controls where the wrapping label is not the right shape to ring. */
-  #fbjs input:focus-visible + [data-fb-focus-ring] {
+  #fbjs[data-fb-input-modality="keyboard"] input:focus-visible + [data-fb-focus-ring] {
     /* Transparent outline is upgraded to the system focus color under forced-colors. */
     outline: 2px solid transparent !important;
     outline-offset: 2px !important;
@@ -344,14 +344,14 @@
      sharp rectangle around a 16px circle. Suppress it; the round indicator (the input's
      direct sibling, tagged data-fb-focus-ring) carries the ring and matches the control's
      shape (WCAG 2.4.7 stays satisfied by the indicator ring). */
-  #fbjs table label:has(input[type="radio"]:focus-visible) {
+  #fbjs[data-fb-input-modality="keyboard"] table label:has(input[type="radio"]:focus-visible) {
     box-shadow: none !important;
     outline: none !important;
   }
 
   /* The hidden input is 1px and clipped; its visible label paints the ring instead.
      outline:none also prevents a stray Highlight ring on it under forced-colors. */
-  #fbjs input.sr-only:focus-visible {
+  #fbjs[data-fb-input-modality="keyboard"] input.sr-only:focus-visible {
     box-shadow: none !important;
     outline: none !important;
   }
@@ -361,7 +361,7 @@
      brand ring inset instead and raise the focused cell. The negative outline-offset
      keeps it inset under forced-colors too, where box-shadows drop and the base
      rule's positive-offset outline would otherwise reintroduce the clipping. */
-  #fbjs label[data-fb-scale-cell]:has(input[type="radio"]:focus-visible) {
+  #fbjs[data-fb-input-modality="keyboard"] label[data-fb-scale-cell]:has(input[type="radio"]:focus-visible) {
     z-index: 20;
     outline-offset: calc(-1 * var(--fb-focus-ring-outer-width)) !important;
     box-shadow: inset 0 0 0 var(--fb-focus-ring-outer-width) var(--fb-focus-ring-outer-color) !important;
@@ -370,25 +370,25 @@
   /* Dropdown menu options: the menu content clips overflowing shadows (overflow-hidden
      for its rounded corners), which cut the sides off the default outer ring. Paint the
      ring inset for menu items as well (same forced-colors offset rationale as above). */
-  #fbjs [role="menuitem"]:focus-visible,
-  #fbjs [role="menuitemradio"]:focus-visible,
-  #fbjs [role="menuitemcheckbox"]:focus-visible {
+  #fbjs[data-fb-input-modality="keyboard"] [role="menuitem"]:focus-visible,
+  #fbjs[data-fb-input-modality="keyboard"] [role="menuitemradio"]:focus-visible,
+  #fbjs[data-fb-input-modality="keyboard"] [role="menuitemcheckbox"]:focus-visible {
     outline-offset: calc(-1 * var(--fb-focus-ring-outer-width)) !important;
     box-shadow: inset 0 0 0 var(--fb-focus-ring-outer-width) var(--fb-focus-ring-outer-color) !important;
   }
 
   @media (forced-colors: active) {
-    #fbjs a:focus-visible,
-    #fbjs button:focus-visible,
-    #fbjs input:focus-visible,
-    #fbjs select:focus-visible,
-    #fbjs textarea:focus-visible,
-    #fbjs summary:focus-visible,
-    #fbjs [tabindex]:where(:not([tabindex="-1"])):focus-visible,
-    #fbjs label:has(input[type="radio"]:focus-visible),
-    #fbjs label:has(input[type="checkbox"]:focus-visible),
-    #fbjs [data-fb-focus-ring]:has(:focus-visible),
-    #fbjs input:focus-visible + [data-fb-focus-ring] {
+    #fbjs[data-fb-input-modality="keyboard"] a:focus-visible,
+    #fbjs[data-fb-input-modality="keyboard"] button:focus-visible,
+    #fbjs[data-fb-input-modality="keyboard"] input:focus-visible,
+    #fbjs[data-fb-input-modality="keyboard"] select:focus-visible,
+    #fbjs[data-fb-input-modality="keyboard"] textarea:focus-visible,
+    #fbjs[data-fb-input-modality="keyboard"] summary:focus-visible,
+    #fbjs[data-fb-input-modality="keyboard"] [tabindex]:where(:not([tabindex="-1"])):focus-visible,
+    #fbjs[data-fb-input-modality="keyboard"] label:has(input[type="radio"]:focus-visible),
+    #fbjs[data-fb-input-modality="keyboard"] label:has(input[type="checkbox"]:focus-visible),
+    #fbjs[data-fb-input-modality="keyboard"] [data-fb-focus-ring]:has(:focus-visible),
+    #fbjs[data-fb-input-modality="keyboard"] input:focus-visible + [data-fb-focus-ring] {
       outline-color: Highlight !important;
     }
   }

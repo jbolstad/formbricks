@@ -207,16 +207,18 @@ const makeProgress = (overrides: Record<string, unknown> = {}) => ({
 
 const renderSurvey = () =>
   render(
-    <Survey
-      appUrl="http://localhost:3000"
-      workspaceId="ws1234567890123456789012"
-      survey={baseSurvey}
-      styling={{} as any}
-      isBrandingEnabled={false}
-      languageCode="en"
-      offlineSupport
-      isSpamProtectionEnabled={false}
-    />
+    <div id="fbjs">
+      <Survey
+        appUrl="http://localhost:3000"
+        workspaceId="ws1234567890123456789012"
+        survey={baseSurvey}
+        styling={{} as any}
+        isBrandingEnabled={false}
+        languageCode="en"
+        offlineSupport
+        isSpamProtectionEnabled={false}
+      />
+    </div>
   );
 
 describe("Survey offline restore", () => {
@@ -397,5 +399,70 @@ describe("Survey offline restore", () => {
     });
 
     expect(apiClientMocks.getResponseIdByDisplayId).not.toHaveBeenCalled();
+  });
+});
+
+describe("Survey input modality", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test("starts in pointer mode and switches to keyboard mode for navigation keys", async () => {
+    renderSurvey();
+
+    const surveyRoot = document.getElementById("fbjs");
+    expect(surveyRoot).not.toBeNull();
+
+    await waitFor(() => {
+      expect(surveyRoot?.getAttribute("data-fb-input-modality")).toBe("pointer");
+    });
+
+    fireEvent.keyDown(document, { key: "Tab" });
+
+    await waitFor(() => {
+      expect(surveyRoot?.getAttribute("data-fb-input-modality")).toBe("keyboard");
+    });
+  });
+
+  test("switches back to pointer mode after pointer intent", async () => {
+    renderSurvey();
+
+    const surveyRoot = document.getElementById("fbjs");
+    expect(surveyRoot).not.toBeNull();
+
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(surveyRoot?.getAttribute("data-fb-input-modality")).toBe("keyboard");
+    });
+
+    fireEvent.pointerDown(document);
+    await waitFor(() => {
+      expect(surveyRoot?.getAttribute("data-fb-input-modality")).toBe("pointer");
+    });
+  });
+
+  test("first Space on an autofocused radio reveals focus without selecting", async () => {
+    renderSurvey();
+
+    const surveyRoot = document.getElementById("fbjs");
+    expect(surveyRoot).not.toBeNull();
+
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "scale";
+    surveyRoot!.appendChild(radio);
+    radio.focus();
+
+    await waitFor(() => {
+      expect(surveyRoot?.getAttribute("data-fb-input-modality")).toBe("pointer");
+    });
+
+    expect(fireEvent.keyDown(radio, { key: " " })).toBe(false);
+
+    await waitFor(() => {
+      expect(surveyRoot?.getAttribute("data-fb-input-modality")).toBe("keyboard");
+    });
+
+    expect(fireEvent.keyDown(radio, { key: " " })).toBe(true);
   });
 });

@@ -29,6 +29,11 @@ import { CardlessSurveyLayout } from "@/components/wrappers/cardless-survey-layo
 import { StackedCardsContainer } from "@/components/wrappers/stacked-cards-container";
 import { ApiClient } from "@/lib/api-client";
 import { getLocalizedValue } from "@/lib/i18n";
+import {
+  KEYBOARD_MODALITY_KEYS,
+  type TInputModality,
+  shouldBlockActivationForInvisibleFocus,
+} from "@/lib/input-modality";
 import { evaluateLogic, performActions } from "@/lib/logic";
 import {
   type SerializedSurveyState,
@@ -167,6 +172,9 @@ export function Survey({
   // Update the responseQueue to use the stored responseId
 
   const [hasInteracted, setHasInteracted] = useState(false);
+  const [inputModality, setInputModality] = useState<TInputModality>("pointer");
+  const inputModalityRef = useRef<TInputModality>(inputModality);
+  inputModalityRef.current = inputModality;
 
   const [localSurvey, setlocalSurvey] = useState<TJsWorkspaceStateSurvey>(survey);
   const [currentVariables, setCurrentVariables] = useState<TResponseVariables>({});
@@ -234,6 +242,60 @@ export function Survey({
     persistSurveyStateSnapshot,
     survey.id,
   ]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (!KEYBOARD_MODALITY_KEYS.has(event.key)) return;
+      setInputModality("keyboard");
+    };
+
+    // Capture phase so we beat native radio Space and React Enter handlers on autofocused options.
+    const handleBlockInvisibleActivation = (event: KeyboardEvent) => {
+      if (
+        !shouldBlockActivationForInvisibleFocus(
+          event,
+          inputModalityRef.current,
+          document.activeElement,
+          document.getElementById("fbjs")
+        )
+      ) {
+        return;
+      }
+
+      // Reveal the ring on this stroke; selection waits for the next Space/Enter.
+      inputModalityRef.current = "keyboard";
+      setInputModality("keyboard");
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handlePointerIntent = () => {
+      setInputModality("pointer");
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleBlockInvisibleActivation, true);
+    document.addEventListener("pointerdown", handlePointerIntent);
+    document.addEventListener("touchstart", handlePointerIntent);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleBlockInvisibleActivation, true);
+      document.removeEventListener("pointerdown", handlePointerIntent);
+      document.removeEventListener("touchstart", handlePointerIntent);
+    };
+  }, []);
+
+  useEffect(() => {
+    const surveyRoot = document.getElementById("fbjs");
+    if (!surveyRoot) return;
+
+    surveyRoot.setAttribute("data-fb-input-modality", inputModality);
+    return () => {
+      surveyRoot.removeAttribute("data-fb-input-modality");
+    };
+  }, [inputModality]);
 
   const questions = useMemo(() => getElementsFromSurveyBlocks(localSurvey.blocks), [localSurvey.blocks]);
 
