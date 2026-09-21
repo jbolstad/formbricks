@@ -3,6 +3,7 @@
   "cacheMaxSize": "10GB",
   "globalDependencies": [
     ".nvmrc",
+    "authzed/schema.zed",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
     "prisma.config.mjs",
@@ -28,7 +29,7 @@
       "dependsOn": ["@formbricks/logger#build"]
     },
     "@formbricks/cache#build": {
-      "dependsOn": ["@formbricks/logger#build"],
+      "dependsOn": ["@formbricks/logger#build", "^build"],
       "outputs": ["dist/**"]
     },
     "@formbricks/cache#go": {
@@ -58,6 +59,12 @@
     },
     "@formbricks/database#lint": {
       "dependsOn": ["@formbricks/logger#build", "@formbricks/database#build"]
+    },
+    "@formbricks/database#test": {
+      "dependsOn": ["@formbricks/i18n-utils#build"]
+    },
+    "@formbricks/database#test:coverage": {
+      "dependsOn": ["@formbricks/i18n-utils#build"]
     },
     "@formbricks/database#typecheck": {
       "dependsOn": ["@formbricks/logger#build", "@formbricks/database#build"]
@@ -90,7 +97,7 @@
     },
     "@formbricks/js-core#build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**", "$TURBO_ROOT$/apps/web/public/js/formbricks.*"]
     },
     "@formbricks/js-core#go": {
       "cache": false,
@@ -137,7 +144,11 @@
     },
     "@formbricks/surveys#build": {
       "dependsOn": ["^build", "@formbricks/survey-ui#build"],
-      "outputs": ["dist/**"]
+      "outputs": [
+        "dist/**",
+        "$TURBO_ROOT$/apps/web/public/js/surveys.*",
+        "$TURBO_ROOT$/apps/web/public/js/validation.*"
+      ]
     },
     "@formbricks/surveys#build:dev": {
       "dependsOn": ["^build:dev", "@formbricks/i18n-utils#build", "@formbricks/survey-ui#build:dev"],
@@ -149,10 +160,10 @@
       "persistent": true
     },
     "@formbricks/surveys#test": {
-      "dependsOn": ["@formbricks/survey-ui#build"]
+      "dependsOn": ["@formbricks/i18n-utils#build", "@formbricks/survey-ui#build"]
     },
     "@formbricks/surveys#test:coverage": {
-      "dependsOn": ["@formbricks/survey-ui#build"]
+      "dependsOn": ["@formbricks/i18n-utils#build", "@formbricks/survey-ui#build"]
     },
     "@formbricks/surveys#typecheck": {
       "dependsOn": ["@formbricks/i18n-utils#build", "@formbricks/survey-ui#build"]
@@ -244,6 +255,12 @@
       ],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**", "!.next/dev/**"],
       "passThroughEnv": [
+        "AUTHZED_CONSISTENCY",
+        "AUTHZED_ENABLED",
+        "AUTHZED_ENDPOINT",
+        "AUTHZED_INSECURE",
+        "AUTHZED_SYSTEM_KEY",
+        "AUTHZED_TOKEN",
         "DATABASE_URL",
         "DEBUG",
         "ENCRYPTION_KEY",
@@ -261,6 +278,7 @@
         "OTEL_SERVICE_NAME",
         "OTEL_TRACES_SAMPLER",
         "OTEL_TRACES_SAMPLER_ARG",
+        "MCP_OAUTH_JWKS_URL",
         "PROMETHEUS_ENABLED",
         "PROMETHEUS_EXPORTER_PORT",
         "REDIS_URL",
@@ -321,7 +339,8 @@
       "persistent": true
     },
     "generate": {
-      "dependsOn": ["^generate"]
+      "dependsOn": ["^generate"],
+      "outputs": ["generated/prisma/**"]
     },
     "go": {
       "cache": false,

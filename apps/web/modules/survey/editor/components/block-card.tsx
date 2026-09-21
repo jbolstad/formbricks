@@ -5,7 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDownIcon, ChevronRightIcon, GripIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type KeyboardEvent, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Workspace } from "@formbricks/database/prisma-browser";
 import { TI18nString } from "@formbricks/types/i18n";
@@ -38,12 +38,14 @@ import { OpenElementForm } from "@/modules/survey/editor/components/open-element
 import { PictureSelectionForm } from "@/modules/survey/editor/components/picture-selection-form";
 import { RankingElementForm } from "@/modules/survey/editor/components/ranking-element-form";
 import { RatingElementForm } from "@/modules/survey/editor/components/rating-element-form";
+import { BLOCK_NAME_MAX_LENGTH } from "@/modules/survey/editor/lib/blocks";
 import { formatShufflePoolLabel } from "@/modules/survey/editor/lib/shuffle-pools";
 import { blockHasShuffleAndJumpConflict } from "@/modules/survey/editor/lib/shuffle-warning";
 import { formatTextWithSlashes } from "@/modules/survey/editor/lib/utils";
 import { getElementIconMap, getTSurveyElementTypeEnumName } from "@/modules/survey/lib/elements";
 import { Alert, AlertButton, AlertDescription, AlertTitle } from "@/modules/ui/components/alert";
 import { Badge } from "@/modules/ui/components/badge";
+import { Input } from "@/modules/ui/components/input";
 import { Label } from "@/modules/ui/components/label";
 import { Switch } from "@/modules/ui/components/switch";
 
@@ -56,6 +58,7 @@ interface BlockCardProps {
   updateElement: (elementIdx: number, updatedAttributes: any) => void;
   updateBlockLogic: (elementIdx: number, logic: TSurveyBlockLogic[]) => void;
   updateBlockLogicFallback: (elementIdx: number, logicFallback: string | undefined) => void;
+  updateBlockName: (blockIdx: number, name: string) => void;
   updateBlockButtonLabel: (
     blockIndex: number,
     labelKey: "buttonLabel" | "backButtonLabel",
@@ -95,6 +98,7 @@ export const BlockCard = ({
   updateElement,
   updateBlockLogic,
   updateBlockLogicFallback,
+  updateBlockName,
   updateBlockButtonLabel,
   updateBlockAttributes,
   duplicateElement,
@@ -119,7 +123,7 @@ export const BlockCard = ({
   addElementToBlock,
   moveElementToBlock,
   totalBlocks,
-}: BlockCardProps) => {
+}: Readonly<BlockCardProps>) => {
   const selectedLanguageCode = "default";
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -146,10 +150,25 @@ export const BlockCard = ({
 
   const hasInvalidElement = block.elements.some((element) => invalidElements?.includes(element.id));
   const hasInvalidLogic = blockLogic.some((logicItem) => invalidElements?.includes(logicItem.id));
-  const isBlockInvalid = hasInvalidElement || hasInvalidLogic;
+  // The block's own id is only ever flagged for an empty name (elements and logic rules use theirs).
+  const hasInvalidName = invalidElements?.includes(block.id) ?? false;
+  const isBlockInvalid = hasInvalidElement || hasInvalidLogic || hasInvalidName;
 
   const [isBlockCollapsed, setIsBlockCollapsed] = useState(false);
   const [openAdvanced, setOpenAdvanced] = useState(blockLogic.length > 0);
+
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Enter commits the rename by blurring, so the title reads as settled. There is nothing to flush:
+  // the name is already in localSurvey and rides the editor's existing autosave.
+  const handleNameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    // An IME (Japanese/Chinese/Korean) uses Enter to accept the highlighted candidate, so blurring
+    // there would commit a half-typed name. The synthetic event doesn't carry isComposing; the
+    // native one does.
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    nameInputRef.current?.blur();
+  };
 
   const [elementsParent] = useAutoAnimate();
 
@@ -297,11 +316,44 @@ export const BlockCard = ({
           className={cn(isBlockCollapsed ? "h-full" : "")}>
           <Collapsible.CollapsibleTrigger asChild>
             <div className="block h-full w-full cursor-pointer hover:bg-slate-100">
-              <div className="flex h-full items-center justify-between px-4 py-2">
-                <div className="flex items-center gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-medium text-slate-700">{block.name}</h4>
+              <div
+                className="flex h-full items-center justify-between px-4 py-2"
+                data-testid="block-card-header">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Input
+                        ref={nameInputRef}
+                        // Controlled: an auto-generated name is resequenced in place by a reorder,
+                        // and an uncontrolled field would keep showing the number it mounted with.
+                        value={block.name}
+                        placeholder={t("workspace.surveys.edit.block_name")}
+                        aria-label={t("workspace.surveys.edit.block_name")}
+                        maxLength={BLOCK_NAME_MAX_LENGTH}
+                        isInvalid={hasInvalidName}
+                        onChange={(e) => updateBlockName(blockIdx, e.target.value)}
+                        onKeyDown={handleNameKeyDown}
+                        // The whole header row is the collapse trigger, so a click meant for the
+                        // field would fold the block instead of placing the caret.
+                        onClick={(e) => e.stopPropagation()}
+                        className={cn(
+                          "-mx-2 h-6 w-full rounded-md border-transparent bg-transparent px-2 py-0",
+                          // The placeholder is muted on purpose: a cleared name is an invalid state
+                          // that must not look like a block still called something.
+                          "text-sm font-medium text-slate-700 placeholder:font-normal placeholder:text-slate-400",
+                          // Wide enough to type a real title into without the box clipping the text,
+                          // and capped so a long one can't crowd out the block menu.
+                          "max-w-[34rem] min-w-[20rem]",
+                          // Dashed hover/focus box, matching the other inline renames in the app
+                          // (see workflow-page-title.tsx): slate while hovered, brand while editing.
+                          "border border-dashed transition-colors",
+                          "hover:border-slate-300 focus:border-brand-dark",
+                          // Same specificity means source order decides, and Tailwind emits hover
+                          // last — without this the border drops to slate on a hovered focused field.
+                          "focus:hover:border-brand-dark",
+                          "focus:ring-0 focus:ring-offset-0 focus:outline-none"
+                        )}
+                      />
                       {block.shufflePoolId?.trim() ? (
                         <Badge
                           text={t("workspace.surveys.edit.card_shuffle_pool_badge", {

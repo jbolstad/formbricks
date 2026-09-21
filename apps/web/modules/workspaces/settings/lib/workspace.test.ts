@@ -2,11 +2,17 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { prisma } from "@formbricks/database";
 import { Prisma } from "@formbricks/database/prisma";
 import { logger } from "@formbricks/logger";
-import { StorageErrorCode } from "@formbricks/storage";
-import { DatabaseError, InvalidInputError, ValidationError } from "@formbricks/types/errors";
+import {
+  DatabaseError,
+  InvalidInputError,
+  OperationNotAllowedError,
+  ValidationError,
+} from "@formbricks/types/errors";
 import { TWorkspace } from "@formbricks/types/workspace";
-import { deleteFilesByWorkspaceId } from "@/modules/storage/service";
-import { createWorkspace, deleteWorkspace, updateWorkspace } from "./workspace";
+import { reconcileFeedbackDirectoryRelationships } from "@/lib/authzed/feedback-directory";
+import { reconcileTeamWorkspaceRelationships } from "@/lib/authzed/team-workspace";
+import { deleteWorkspaceFilesBestEffort } from "@/modules/storage/service";
+import { createWorkspace, deleteWorkspace, deleteWorkspaceIfNotLast, updateWorkspace } from "./workspace";
 
 vi.mock("server-only", () => ({}));
 
@@ -36,6 +42,7 @@ const baseWorkspace = {
 vi.mock("@formbricks/database", () => ({
   prisma: {
     $transaction: vi.fn(),
+    $queryRaw: vi.fn(),
     workspace: {
       update: vi.fn(),
       create: vi.fn(),
@@ -54,6 +61,7 @@ vi.mock("@formbricks/database", () => ({
     feedbackDirectoryWorkspace: {
       count: vi.fn(),
       create: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -63,6 +71,13 @@ vi.mock("@formbricks/database", () => ({
 // `any` casts, so the fixture can't silently drift from the query's shape.
 const mockOrgTeams = (...ids: string[]) =>
   ids.map((id) => ({ id })) as unknown as Awaited<ReturnType<typeof prisma.team.findMany>>;
+
+vi.mock("@/lib/authzed/team-workspace", () => ({
+  reconcileTeamWorkspaceRelationships: vi.fn(),
+}));
+vi.mock("@/lib/authzed/feedback-directory", () => ({
+  reconcileFeedbackDirectoryRelationships: vi.fn(),
+}));
 
 const expectNoFrdSideEffects = () => {
   expect(prisma.feedbackDirectory.upsert).not.toHaveBeenCalled();
@@ -83,7 +98,7 @@ vi.mock("@/lib/utils/validate", () => ({
 }));
 
 vi.mock("@/modules/storage/service", () => ({
-  deleteFilesByWorkspaceId: vi.fn(),
+  deleteWorkspaceFilesBestEffort: vi.fn(),
 }));
 
 describe("workspace lib", () => {
@@ -92,6 +107,7 @@ describe("workspace lib", () => {
     // createWorkspace runs its ownership check and both writes in one transaction. Hand the callback
     // the same prisma mock so assertions stay on `prisma.*` and a rollback surfaces as a throw.
     vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => callback(prisma));
+    vi.mocked(prisma.feedbackDirectoryWorkspace.findMany).mockResolvedValue([]);
   });
 
   describe("updateWorkspace", () => {
@@ -102,6 +118,7 @@ describe("workspace lib", () => {
       });
       expect(result).toEqual(baseWorkspace);
       expect(prisma.workspace.update).toHaveBeenCalled();
+      expect(reconcileTeamWorkspaceRelationships).toHaveBeenCalledWith({ workspaceIds: ["p1"] });
     });
 
     test("throws DatabaseError on Prisma error", async () => {
@@ -161,6 +178,10 @@ describe("workspace lib", () => {
       );
       expect(prisma.workspace.create).toHaveBeenCalled();
       expect(prisma.workspaceTeam.createMany).toHaveBeenCalled();
+      expect(reconcileTeamWorkspaceRelationships).toHaveBeenCalledWith({
+        workspaceIds: ["p2"],
+        workspaceTeamGrants: [{ teamId: "t1", workspaceId: "p2" }],
+      });
       expectNoFrdSideEffects();
     });
 
@@ -307,23 +328,45 @@ describe("workspace lib", () => {
 
   describe("deleteWorkspace", () => {
     test("deletes workspace, deletes files, and revalidates cache", async () => {
+      const feedbackDirectoryAssignment = {
+        feedbackDirectoryId: "feedback-directory-1",
+        workspaceId: "p1",
+      };
+      vi.mocked(prisma.feedbackDirectoryWorkspace.findMany).mockResolvedValueOnce([
+        feedbackDirectoryAssignment,
+      ] as any);
       vi.mocked(prisma.workspace.delete).mockResolvedValueOnce(baseWorkspace as any);
 
-      vi.mocked(deleteFilesByWorkspaceId).mockResolvedValue({ ok: true, data: undefined });
       const result = await deleteWorkspace("p1");
       expect(result).toEqual(baseWorkspace);
-      expect(deleteFilesByWorkspaceId).toHaveBeenCalledWith("p1", []);
+      expect(reconcileTeamWorkspaceRelationships).toHaveBeenCalledWith({ workspaceIds: ["p1"] });
+      expect(reconcileFeedbackDirectoryRelationships).toHaveBeenCalledWith({
+        assignments: [feedbackDirectoryAssignment],
+      });
+      expect(deleteWorkspaceFilesBestEffort).toHaveBeenCalledWith(baseWorkspace);
     });
 
-    test("logs error if file deletion fails", async () => {
-      vi.mocked(prisma.workspace.delete).mockResolvedValueOnce(baseWorkspace as any);
-      vi.mocked(deleteFilesByWorkspaceId).mockResolvedValue({
-        ok: false,
-        error: { code: StorageErrorCode.Unknown },
-      } as any);
-      vi.mocked(logger.error).mockImplementation(() => {});
+    // ENG-3197: this used to pass a hardcoded [] for the legacy prefixes, so files uploaded before
+    // the workspace was migrated off its environment id survived the delete.
+    test("passes the workspace's legacy environment prefix to storage cleanup", async () => {
+      const migratedWorkspace = { ...baseWorkspace, legacyEnvironmentId: "env-1" };
+      vi.mocked(prisma.workspace.delete).mockResolvedValueOnce(migratedWorkspace as any);
+
       await deleteWorkspace("p1");
-      expect(logger.error).toHaveBeenCalled();
+
+      expect(deleteWorkspaceFilesBestEffort).toHaveBeenCalledWith(migratedWorkspace);
+    });
+
+    test("selects legacyEnvironmentId off the deleted row", async () => {
+      vi.mocked(prisma.workspace.delete).mockResolvedValueOnce(baseWorkspace as any);
+
+      await deleteWorkspace("p1");
+
+      expect(prisma.workspace.delete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({ legacyEnvironmentId: true }),
+        })
+      );
     });
 
     test("throws DatabaseError on Prisma error", async () => {
@@ -338,6 +381,20 @@ describe("workspace lib", () => {
     test("throws unknown error", async () => {
       vi.mocked(prisma.workspace.delete).mockRejectedValueOnce(new Error("fail"));
       await expect(deleteWorkspace("p1")).rejects.toThrow("fail");
+    });
+
+    test("deletes a workspace while another workspace remains", async () => {
+      vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ id: "p1" }, { id: "p2" }]);
+      vi.mocked(prisma.workspace.delete).mockResolvedValueOnce(baseWorkspace as any);
+
+      await expect(deleteWorkspaceIfNotLast("p1", "org1")).resolves.toEqual(baseWorkspace);
+    });
+
+    test("does not delete the last workspace", async () => {
+      vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ id: "p1" }]);
+
+      await expect(deleteWorkspaceIfNotLast("p1", "org1")).rejects.toThrow(OperationNotAllowedError);
+      expect(prisma.workspace.delete).not.toHaveBeenCalled();
     });
   });
 });

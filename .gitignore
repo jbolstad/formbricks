@@ -34,6 +34,12 @@ yarn-error.log*
 **/.env.development.local
 **/.env.test.local
 **/.env.production.local
+# Any hand-made copy of an env file. `**/.env` alone does not match a suffixed backup, which is how
+# `apps/web/.env.pre-smoke-backup` reached a commit.
+**/.env.*.backup
+**/.env.backup
+**/.env-backup
+**/.env.*backup*
 !packages/database/.env
 !apps/web/.env
 
@@ -74,6 +80,10 @@ packages/ios/FormbricksSDK/FormbricksSDK.xcodeproj/project.xcworkspace/xcuserdat
 .cursorrules
 i18n.cache
 stats.html
+
+# authzed:perf sample logs — multi-MB JSONL written next to the tracked authzed/ assets
+authzed/perf-samples.jsonl
+authzed/*.perf.jsonl
 # next-agents-md
 .next-docs/
 

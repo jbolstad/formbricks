@@ -56,7 +56,9 @@ const nextConfig = {
   // Enable source maps only when uploading to Sentry (CI/production); skip for faster local builds
   productionBrowserSourceMaps: !!process.env.SENTRY_AUTH_TOKEN,
   serverExternalPackages: [
+    "@authzed/authzed-node",
     "@aws-sdk",
+    "@grpc/grpc-js",
     "@opentelemetry/api",
     "@opentelemetry/auto-instrumentations-node",
     "@opentelemetry/exporter-metrics-otlp-http",
@@ -183,6 +185,7 @@ const nextConfig = {
       ? getUniqueValues([
           ...LOOPBACK_WILDCARD_ORIGINS,
           ...getLoopbackOriginVariants(process.env.WEBAPP_URL),
+          ...getLoopbackOriginVariants(process.env.BETTER_AUTH_URL),
           ...getLoopbackOriginVariants(process.env.NEXTAUTH_URL),
           ...getLoopbackOriginVariants(process.env.S3_ENDPOINT_URL),
         ])

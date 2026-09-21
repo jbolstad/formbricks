@@ -136,6 +136,95 @@ If `namespaceOverride` is provided, it will be used; otherwise, it defaults to `
 {{- printf "%s-app-secrets" (include "formbricks.name" .) -}}
 {{- end }}
 
+{{/*
+Resolve bundled PostgreSQL connection details through the dependency's own helpers so every
+consumer follows the same override and global-value precedence as the rendered Service.
+*/}}
+{{- define "formbricks.postgresqlPrimaryHost" -}}
+{{- include "postgresql.v1.primary.fullname" .Subcharts.postgresql -}}
+{{- end }}
+
+{{- define "formbricks.postgresqlServicePort" -}}
+{{- include "postgresql.v1.service.port" .Subcharts.postgresql -}}
+{{- end }}
+
+{{- define "formbricks.postgresqlUsername" -}}
+{{- include "postgresql.v1.username" .Subcharts.postgresql | default "postgres" -}}
+{{- end }}
+
+{{- define "formbricks.postgresqlDatabase" -}}
+{{- include "postgresql.v1.database" .Subcharts.postgresql -}}
+{{- end }}
+
+{{- define "formbricks.postgresqlAppPasswordKey" -}}
+{{- if eq (include "formbricks.postgresqlUsername" .) "postgres" -}}
+{{- "POSTGRES_ADMIN_PASSWORD" -}}
+{{- else -}}
+{{- "POSTGRES_USER_PASSWORD" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "formbricks.authzedClusterName" -}}
+{{- .Values.authzed.cluster.name | default (printf "%s-spicedb" (include "formbricks.name" .)) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "formbricks.authzedManagedSecretName" -}}
+{{- printf "%s-authzed" (include "formbricks.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "formbricks.authzedAuthSecretName" -}}
+{{- .Values.authzed.auth.existingSecret | default (include "formbricks.authzedManagedSecretName" .) -}}
+{{- end }}
+
+{{- define "formbricks.authzedDatastoreSecretName" -}}
+{{- .Values.authzed.datastore.existingSecret | default (include "formbricks.authzedManagedSecretName" .) -}}
+{{- end }}
+
+{{- define "formbricks.authzedEndpoint" -}}
+{{- if .Values.authzed.endpoint -}}
+{{- .Values.authzed.endpoint -}}
+{{- else if eq .Values.authzed.mode "selfHosted" -}}
+{{- printf "%s:50051" (include "formbricks.authzedClusterName" .) -}}
+{{- else if eq .Values.authzed.mode "external" -}}
+{{- fail "authzed.endpoint is required when authzed.mode=external" -}}
+{{- else -}}
+{{- fail "authzed.mode must be one of: selfHosted, external" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "formbricks.authzedInsecure" -}}
+{{- if eq .Values.authzed.insecure nil -}}
+{{- eq .Values.authzed.mode "selfHosted" -}}
+{{- else -}}
+{{- .Values.authzed.insecure -}}
+{{- end -}}
+{{- end }}
+
+{{- define "formbricks.authzedPresharedKey" -}}
+{{- /* Cluster-generated credentials are persisted through the managed Secret. Renderers without
+      live Secret access must use authzed.auth.existingSecret, as documented in the chart README. */ -}}
+{{- $secretName := include "formbricks.authzedManagedSecretName" . -}}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- $secretData := dig "data" dict $secret -}}
+{{- if index $secretData .Values.authzed.auth.tokenKey -}}
+{{- index $secretData .Values.authzed.auth.tokenKey | b64dec -}}
+{{- else -}}
+{{- randAlphaNum 48 -}}
+{{- end -}}
+{{- end }}
+
+{{- define "formbricks.authzedDatabasePassword" -}}
+{{- /* See formbricks.authzedPresharedKey for the offline-rendering persistence contract. */ -}}
+{{- $secretName := include "formbricks.authzedManagedSecretName" . -}}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- $secretData := dig "data" dict $secret -}}
+{{- if index $secretData "database_password" -}}
+{{- index $secretData "database_password" | b64dec -}}
+{{- else -}}
+{{- randAlphaNum 32 -}}
+{{- end -}}
+{{- end }}
+
 {{- define "formbricks.redisName" -}}
 {{- .Values.redis.fullnameOverride | default (printf "%s-redis" (include "formbricks.name" .)) | trunc 63 | trimSuffix "-" -}}
 {{- end }}
@@ -608,13 +697,24 @@ true
 {{- end -}}
 {{- end }}
 
-{{- define "formbricks.nextAuthSecret" -}}
+{{/*
+Resolve the auth secret, preferring the documented BETTER_AUTH_SECRET and accepting the legacy
+NEXTAUTH_SECRET an existing release already stores. Reading the legacy key is what keeps `helm upgrade`
+from minting a fresh secret on an instance installed before the rename — which would log every user out
+and invalidate outstanding invite and verification links.
+
+Include this ONCE per render and reuse the value: the final branch is `randAlphaNum`, so a second
+`include` on a fresh install returns a different secret.
+*/}}
+{{- define "formbricks.authSecret" -}}
 {{- $secret := (lookup "v1" "Secret" .Release.Namespace (include "formbricks.appSecretName" .)) }}
 {{- $secretData := dig "data" dict $secret }}
-{{- if index $secretData "NEXTAUTH_SECRET" }}
+{{- if index $secretData "BETTER_AUTH_SECRET" }}
+    {{- index $secretData "BETTER_AUTH_SECRET" | b64dec -}}
+{{- else if index $secretData "NEXTAUTH_SECRET" }}
     {{- index $secretData "NEXTAUTH_SECRET" | b64dec -}}
 {{- else if and $secret (hasKey $secret "data") }}
-    {{- fail (printf "Secret %q exists in namespace %q but is missing NEXTAUTH_SECRET" (include "formbricks.appSecretName" .) .Release.Namespace) -}}
+    {{- fail (printf "Secret %q exists in namespace %q but is missing BETTER_AUTH_SECRET (the legacy NEXTAUTH_SECRET is also accepted)" (include "formbricks.appSecretName" .) .Release.Namespace) -}}
 {{- else }}
     {{- randAlphaNum 32 -}}
 {{- end -}}
